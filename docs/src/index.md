@@ -10,22 +10,13 @@
 ```julia
 using LibRawWrapper
 
-p = LibRawProcessor()
-try
-    open!(p, "photo.nef")
-    unpack!(p)
-    info = metadata(p)
+openraw("photo.nef") do raw
+    info = metadata(raw)
     println("$(info.make) $(info.model): $(info.width)×$(info.height)")
-
-    # Julia-owned height × width × channels array.
-    raw = sensor_image(p).data
-    matrix = rgb_cam_matrix(p) # 3×4 Matrix{Float32}
-
-    process!(p)
-    rendered = processed_image(p)
-    # rendered.data is a copied Vector{UInt8}; native memory is released.
-finally
-    close!(p)
+    sensor = sensor_image(raw)
+    matrix = rgb_cam_matrix(raw) # Julia-owned 3×4 Matrix{Float32}
+    rendered = postprocess!(raw; output_type=UInt16, half_size=true)
+    pixels = rendered.data # Julia-owned height × width × channels array
 end
 ```
 
@@ -58,12 +49,12 @@ values with `snapshot(p)`, or individually with `image_sizes`, `image_identity`,
 `raw_data_info`. For example:
 
 ```julia
-open!(p, "photo.nef")
-unpack!(p)
-s = snapshot(p)
-s.identity.model
-s.color.rgb_cam       # ordinary Julia Matrix{Float32}
-s.other.iso_speed
+openraw("photo.nef") do p
+    s = snapshot(p)
+    println(s.identity.model)
+    println(s.color.rgb_cam) # ordinary Julia Matrix{Float32}
+    println(s.other.iso_speed)
+end
 ```
 
 These snapshots remain valid after `recycle!(p)` or `close!(p)`. The generated
@@ -71,20 +62,24 @@ These snapshots remain valid after `recycle!(p)` or `close!(p)`. The generated
 
 ## High-level recipes
 
+The `examples/` directory contains runnable counterparts to the small LibRaw
+samples: `identify.jl` (raw-identify), `unprocessed.jl` (unprocessed sensor
+and CFA access), `process.jl` (simple_dcraw rendering), `thumbnail.jl`, and
+`buffer.jl` (memory input). Run one with `julia --project examples/process.jl
+photo.nef`.
+
+The remaining upstream samples exercise APIs that are deliberately not yet
+wrapped, such as `open_bayer`, multithreaded rendering, progress callbacks,
+and raw text/vendor metadata dumps. They are tracked in `TODO.md` until a
+Julia-owned interface can represent them cleanly.
+
 ### Inspect a file without retaining native state
 
 ```julia
 using LibRawWrapper
 
-function identify(path)
-    p = LibRawProcessor()
-    try
-        open!(p, path)
-        unpack!(p)
-        return snapshot(p)
-    finally
-        close!(p)
-    end
+identify(path) = openraw(path) do p
+    snapshot(p)
 end
 
 info = identify("photo.nef")
@@ -98,15 +93,11 @@ alive.
 ### Read raw pixels and camera color data
 
 ```julia
-p = LibRawProcessor()
-try
-    open!(p, "photo.nef")
-    unpack!(p)
-    pixels = sensor_image(p).data             # height × width × 4, UInt16
-    camera_matrix = rgb_cam_matrix(p) # 3 × 4, Float32
-    println("first pixel: ", pixels[1, 1, :])
-finally
-    close!(p)
+openraw("photo.nef") do p
+    sensor = sensor_image(p; visible=true)
+    pixels = sensor.data                       # height × width[/channels]
+    camera_matrix = rgb_cam_matrix(p)          # 3 × 4, Float32
+    println("first pixel: ", ndims(pixels) == 2 ? pixels[1, 1] : pixels[1, 1, :])
 end
 ```
 
@@ -116,35 +107,25 @@ it never invokes `raw2image` or changes the native working image.
 ### Render a processed image
 
 ```julia
-p = LibRawProcessor()
-try
-    open!(p, "photo.nef")
-    unpack!(p)
-    process!(p)
-    rendered = processed_image(p)
+openraw("photo.nef") do p
+    rendered = postprocess!(p; output_type=UInt8, color_space=SRGB,
+        demosaic=AHD, auto_bright=true)
     # `rendered.data` is safe to retain after close! or recycle!.
-    println((rendered.width, rendered.height, rendered.colors, rendered.bits))
+    println(size(rendered.data), " ", eltype(rendered.data), " ", rendered.metadata)
     write("photo.rgb", rendered.data)
-finally
-    close!(p)
 end
 ```
 
-The result includes `width`, `height`, `colors`, `bits`, `format`, and a copied
-`Vector{UInt8}` payload. Decoding that payload into a display image is left to
-the caller’s preferred image package.
+The result contains a copied typed array in height × width × channel order and
+an `OutputMetadata` value describing the rendering settings. The array can be
+passed directly to the caller’s preferred Julia image package.
 
 ### Load from a memory buffer
 
 ```julia
 bytes = read("photo.nef")
-p = LibRawProcessor()
-try
-    open!(p, bytes)
-    unpack!(p)
+openraw(bytes) do p
     println(metadata(p))
-finally
-    close!(p)
 end
 ```
 
@@ -154,18 +135,11 @@ for LibRaw’s native reader.
 ### Extract a thumbnail
 
 ```julia
-p = LibRawProcessor()
-try
-    open!(p, "photo.nef")
-    unpack_thumbnail!(p)
-    thumb = thumbnail(p)
+openraw("photo.nef"; unpack=false) do p
+    thumb = extract_thumbnail!(p)
+    thumb === nothing && error("file has no readable thumbnail")
     println("thumbnail: ", thumb.width, " × ", thumb.height)
     write("photo.thumbnail", thumb.data)
-catch e
-    e isa LibRawError || rethrow()
-    @warn "This file has no readable thumbnail" exception=e
-finally
-    close!(p)
 end
 ```
 
@@ -175,16 +149,12 @@ the main RAW image remains processable.
 ### Reuse one processor for multiple files
 
 ```julia
-p = LibRawProcessor()
-try
+openraw("one.nef"; unpack=false) do p
     for path in ["one.nef", "two.nef"]
         open!(p, path)
         unpack!(p)
         println(metadata(p).model)
-        recycle!(p)
     end
-finally
-    close!(p)
 end
 ```
 
@@ -195,8 +165,8 @@ object available for the next input.
 
 ```julia
 try
-    p = LibRawProcessor()
-    open!(p, "missing.nef")
+    openraw("missing.nef") do _
+    end
 catch e
     if e isa LibRawError
         println("operation $(e.operation) failed with code $(e.code): $(e.message)")

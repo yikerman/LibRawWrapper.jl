@@ -25,6 +25,9 @@ images, and thumbnails. `snapshot` remains valid after the underlying LibRaw
 processor is recycled or closed. See the [high-level guide](docs/src/index.md)
 and the runnable [examples](examples/).
 
+The examples include raw-identification, unprocessed sensor/CFA inspection,
+thumbnail extraction, memory-buffer input, and simple rendering workflows.
+
 ## Two interfaces
 
 `LibRawProcessor` is the recommended interface for application code. It
