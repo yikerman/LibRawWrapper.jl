@@ -1,6 +1,7 @@
 [general]
 library_name = "libraw"
-output_file_path = "../src/raw.jl"
+output_file_path = "../src/bindings/placeholder.jl"
 module_name = "LibRawRaw"
 jll_pkg_name = "LibRaw_jll"
 export_symbol_prefixes = ["libraw_"]
+use_deterministic_symbol = true

@@ -38,3 +38,7 @@ compatibility are defined.
 ## References
 
 See the [LibRaw C API](https://www.libraw.org/docs/API-C.html), [data structures](https://www.libraw.org/docs/API-datastruct-eng.html), and [API notes](https://www.libraw.org/docs/API-notes.html). The Python [rawpy API](https://letmaik.github.io/rawpy/api/) is a useful reference for user-facing RAW workflows, but this package keeps Julia-native types and snapshot ownership semantics instead of reproducing rawpy's interface.
+
+## Alternative binding distribution
+
+- [ ] Evaluate storing the generated per-platform Julia bindings as platform-specific Pkg artifacts selected through `Artifacts.toml`, instead of committing one generated source file per target. This could reduce runtime dispatch code, but would require publishing and hashing generated-source artifacts and would make binding review less direct.

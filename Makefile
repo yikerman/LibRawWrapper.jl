@@ -3,7 +3,7 @@ JULIA ?= julia
 .PHONY: help deps generate parse format test test-examples docs check
 
 help:
-	@echo "make generate       Regenerate src/raw.jl with Clang.jl"
+	@echo "make generate       Regenerate per-target src/bindings with Clang.jl"
 	@echo "make parse          Load and precompile the complete package"
 	@echo "make format         Format Julia source files"
 	@echo "make test           Run package tests"
