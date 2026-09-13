@@ -10,7 +10,7 @@ LibRaw_jll = "d66ac3f3-933a-5ab8-8aa2-9e591b3c5af3"
 [compat]
 CEnum = "0.5.0"
 LibRaw_jll = "=0.22.2"
-julia = "1.10"
+julia = "1.12"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c523c59b6e"
