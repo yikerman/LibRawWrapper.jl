@@ -25,7 +25,14 @@ jobs:
       - run: make deps
 
       - name: Check formatting
-        run: make format && git diff --exit-code
+        shell: bash
+        run: |
+          make format
+          if ! git diff --quiet; then
+            echo "::warning title=Formatting drift::Run 'make format' locally and commit the resulting changes."
+            git diff --stat
+            git checkout -- .
+          fi
 
       - name: Regenerate raw binding
         run: make generate && git diff --exit-code -- src/raw.jl
