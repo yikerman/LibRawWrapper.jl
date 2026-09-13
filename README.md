@@ -55,6 +55,8 @@ make generate   # regenerate src/raw.jl from LibRaw_jll headers
 make parse      # load and precompile the complete package
 make format     # format Julia source files
 make test       # run the test suite
+make test-examples # run every example against the bundled fixture
+make deps        # instantiate root and documentation/generator environments
 make docs       # build Documenter.jl documentation
 make check      # precompile and test
 ```
