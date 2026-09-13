@@ -19,7 +19,7 @@ parse:
 	$(JULIA) --project -e 'using LibRawWrapper'
 
 format:
-	$(JULIA) --project=tools -e 'using JuliaFormatter; format("src"; overwrite=true, ignore=["raw.jl"]); for dir in ("gen", "test", "examples"); format(dir; overwrite=true); end'
+	$(JULIA) --project=tools -e 'using JuliaFormatter; format("src"; overwrite=true, ignore=["raw.jl", "bindings"]); for dir in ("gen", "test", "examples"); format(dir; overwrite=true); end'
 
 test:
 	$(JULIA) --project test/runtests.jl
