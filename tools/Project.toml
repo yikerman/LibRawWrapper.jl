@@ -1,0 +1,9 @@
+[deps]
+Clang = "40e3b903-d033-50b4-a0cc-940c62c95e31"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
+LibRawWrapper = "2d4f6b5d-1d6f-4c9a-9d6e-6c6f2f7b4a11"
+LibRaw_jll = "d66ac3f3-933a-5ab8-8aa2-9e591b3c5af3"
+
+[sources]
+LibRawWrapper = {path = ".."}

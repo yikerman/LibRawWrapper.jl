@@ -1,0 +1,40 @@
+# Follow-up work
+
+`LibRawRaw` remains the complete generated C ABI. The high-level API covers the
+normal open → unpack → inspect → process workflow and returns Julia-owned
+snapshots and image data.
+
+## Completed
+
+- Validated `ProcessingParams` for white balance, demosaic, color space, gamma,
+  brightness, highlights, orientation, and output depth.
+- Lifecycle-safe `LibRawProcessor` with path, byte-vector, and IO inputs.
+- Fatal-error handling, recycling, finalization, and one-based thumbnail access.
+- Typed processed images and JPEG/bitmap thumbnails.
+- CFA-aware Bayer/X-Trans access, visible crops, channel indices, and floating-
+  point or multichannel sensor buffers.
+- Snapshots for core image, color, lens, shooting, thumbnail, and raw-data
+  metadata, with ad-hoc dictionaries for maker notes and DNG entries.
+
+## Remaining
+
+- Expose `libraw_open_file_ex` options and a safe `open_bayer!` convenience API.
+- Add typed accessors for remaining output controls such as FBDD noise
+  reduction, maximum adjustment threshold, output TIFF mode, and crop boxes.
+- Add copied ICC, XMP, GPS, and richer vendor metadata where ownership can be
+  represented safely; retain unknown fields in dictionaries.
+- Add rooted callback helpers, progress cancellation, and callback cleanup.
+- Add managed wrappers for `dcraw_ppm_tiff_writer`, `dcraw_thumb_writer`,
+  `recycle_datastream`, `subtract_black`, `free_image`, and
+  `adjust_sizes_info_only` where useful.
+
+## Raw-only by design
+
+Callback records, custom datastream classes, internal decoder structures, and
+complete vendor maker-note layouts remain available through `LibRawRaw`. They
+should not become stable typed APIs until pointer ownership and version
+compatibility are defined.
+
+## References
+
+See the [LibRaw C API](https://www.libraw.org/docs/API-C.html), [data structures](https://www.libraw.org/docs/API-datastruct-eng.html), and [API notes](https://www.libraw.org/docs/API-notes.html). The Python [rawpy API](https://letmaik.github.io/rawpy/api/) is a useful reference for user-facing RAW workflows, but this package keeps Julia-native types and snapshot ownership semantics instead of reproducing rawpy's interface.

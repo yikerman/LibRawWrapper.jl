@@ -1,0 +1,19 @@
+name = "LibRawWrapper"
+uuid = "2d4f6b5d-1d6f-4c9a-9d6e-6c6f2f7b4a11"
+version = "0.22.2+1"
+authors = ["Yi Cao"]
+
+[deps]
+CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+LibRaw_jll = "d66ac3f3-933a-5ab8-8aa2-9e591b3c5af3"
+
+[compat]
+CEnum = "0.5.0"
+LibRaw_jll = "=0.22.2"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c523c59b6e"
+
+[targets]
+test = ["Test"]
