@@ -64,3 +64,9 @@ make check      # precompile and test
 `make generate` writes per-platform raw modules to `src/bindings/`, selected
 by `src/raw.jl`. The managed layer lives in `src/types.jl`, `src/highlevel.jl`, `src/snapshots.jl`,
 `src/sensor.jl`, and `src/processing.jl`.
+
+## License
+
+LibRawWrapper is licensed under LGPL-3.0-or-later. See [COPYING.LESSER](COPYING.LESSER)
+and the accompanying [GPL-3.0 text](COPYING). Native dependencies and the
+bundled photograph retain their respective licenses and rights.
