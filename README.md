@@ -1,8 +1,7 @@
 # LibRawWrapper.jl
 
 Read RAW photographs in [Julia](https://julialang.org/) with
-[LibRaw](https://www.libraw.org/). Use the managed Julia API to inspect metadata,
-read sensor samples, and render images. The generated C API is available for direct access to LibRaw.
+[LibRaw](https://www.libraw.org/).
 
 ## Quick start
 
@@ -27,15 +26,6 @@ The [explanation](docs/src/explanation.md) covers ownership and processing stage
 
 Runnable [examples](examples/) cover file identification, sensor and CFA
 inspection, thumbnail extraction, memory-buffer input, and rendering.
-
-## Two interfaces
-
-`LibRawProcessor` is the recommended interface for application code. It
-manages the LibRaw lifecycle and exposes Julia types for metadata, CFA layouts,
-processing parameters, images, and thumbnails.
-
-`LibRawRaw` is the standalone Clang.jl-generated module containing the raw C
-ABI. It preserves LibRaw's structs, pointers, callbacks, and return codes.
 
 ## Installation
 

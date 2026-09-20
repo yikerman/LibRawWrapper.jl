@@ -85,16 +85,11 @@ validate native execution on each platform.
 
 The test fixture `test/data/test.nef` is a Nikon D850 image tracked with Git LFS.
 Use LFS checkout for real image bytes; do not replace it with a pointer or alter
-it for unrelated changes. Current fixture coverage does not validate X-Trans,
-monochrome, float, or multichannel camera files. `snapshot(...).maker_notes`
-currently contains placeholder values; detailed vendor fields remain raw-only.
+it for unrelated changes. Current fixture coverage does not validate DNG,
+X-Trans, monochrome, float, or multichannel camera files.
 
 ## Repository conventions
 
 Use short commit subjects matching the existing history, such as `fix: ...`,
 `fix(ci): ...`, and `test: ...`. Keep independent changes in separate commits and
-include regressions with the corresponding fix. Preserve intentional user edits;
-in particular, the README beta-scope section was deliberately removed.
-
-The wrapper is LGPL-3.0-or-later. `COPYING` contains GPLv3 and `COPYING.LESSER`
-contains LGPLv3; keep this conventional naming and the README links in sync.
+include regressions with the corresponding fix.
