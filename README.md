@@ -51,7 +51,7 @@ binding generation use one LibRaw release artifact.
 ## Development
 
 ```bash
-make generate   # regenerate src/raw.jl from LibRaw_jll headers
+make generate   # regenerate src/bindings/*.jl from LibRaw_jll headers
 make parse      # load and precompile the complete package
 make format     # format Julia source files
 make test       # run the test suite
@@ -61,6 +61,6 @@ make docs       # build Documenter.jl documentation
 make check      # precompile and test
 ```
 
-`make generate` writes the standalone raw module to `src/raw.jl`; the managed
-layer lives in `src/types.jl`, `src/highlevel.jl`, `src/snapshots.jl`,
+`make generate` writes per-platform raw modules to `src/bindings/`, selected
+by `src/raw.jl`. The managed layer lives in `src/types.jl`, `src/highlevel.jl`, `src/snapshots.jl`,
 `src/sensor.jl`, and `src/processing.jl`.

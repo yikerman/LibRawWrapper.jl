@@ -34,11 +34,11 @@ jobs:
             git checkout -- .
           fi
 
-      - name: Regenerate raw binding
-        run: make generate && git diff --exit-code -- src/raw.jl
-
       - name: Run tests and examples
         run: make check
+
+      - name: Check generated bindings
+        run: make generate && git diff --exit-code -- src/raw.jl src/bindings
 
       - name: Build documentation
         run: make docs
