@@ -1,9 +1,8 @@
 # LibRawWrapper.jl
 
 Read RAW photographs in [Julia](https://julialang.org/) with
-[LibRaw](https://www.libraw.org/). The package provides a convenient Julia API
-for the usual workflow and keeps the complete generated C API available when
-you need lower-level control.
+[LibRaw](https://www.libraw.org/). Use the managed Julia API to inspect metadata,
+read sensor samples, and render images. The generated C API is available for direct access to LibRaw.
 
 ## Quick start
 
@@ -20,13 +19,14 @@ openraw("photo.nef") do raw
 end
 ```
 
-The high-level layer owns copied metadata, matrices, sensor data, processed
-images, and thumbnails. `snapshot` remains valid after the underlying LibRaw
-processor is recycled or closed. See the [high-level guide](docs/src/index.md)
-and the runnable [examples](examples/).
+Metadata snapshots, sensor samples, rendered images, and thumbnails are copied
+into Julia storage and remain valid after the processor is recycled or closed.
+Start with the [tutorial](docs/src/tutorial.md), find a recipe in the
+[how-to guides](docs/src/how-to.md), or consult the [API reference](docs/src/api.md).
+The [explanation](docs/src/explanation.md) covers ownership and processing stages.
 
-The examples include raw-identification, unprocessed sensor/CFA inspection,
-thumbnail extraction, memory-buffer input, and simple rendering workflows.
+Runnable [examples](examples/) cover file identification, sensor and CFA
+inspection, thumbnail extraction, memory-buffer input, and rendering.
 
 ## Two interfaces
 
@@ -35,14 +35,13 @@ manages the LibRaw lifecycle and exposes Julia types for metadata, CFA layouts,
 processing parameters, images, and thumbnails.
 
 `LibRawRaw` is the standalone Clang.jl-generated module containing the raw C
-ABI. It preserves LibRaw's structs, pointers, callbacks, and return codes for
-advanced integrations. (`LibRaw` the lib name + `Raw` raw C api)
+ABI. It preserves LibRaw's structs, pointers, callbacks, and return codes.
 
 ## Installation
 
 ```julia
 using Pkg
-Pkg.add("LibRawWrapper")
+Pkg.add(url="https://github.com/yikerman/LibRawWrapper.jl.git")
 ```
 
 The native library and matching headers come from `LibRaw_jll`, so runtime and
@@ -62,8 +61,8 @@ make check      # precompile and test
 ```
 
 `make generate` writes per-platform raw modules to `src/bindings/`, selected
-by `src/raw.jl`. The managed layer lives in `src/types.jl`, `src/highlevel.jl`, `src/snapshots.jl`,
-`src/sensor.jl`, and `src/processing.jl`.
+by `src/raw.jl`. The managed layer lives in `src/types.jl`, `src/highlevel.jl`,
+`src/snapshots.jl`, `src/sensor.jl`, and `src/processing.jl`.
 
 ## License
 

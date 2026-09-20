@@ -46,14 +46,14 @@ _sizes(s::libraw_image_sizes_t) = ImageSizes(
 )
 
 """
-Copy current, stage-dependent [`ImageSizes`](@ref) from an opened input; sensor snapshots retain the original unpacked geometry.
+Copy current [`ImageSizes`](@ref) from an opened input. Dimensions can change with processing; sensor snapshots retain the original unpacked geometry.
 """
 function image_sizes(p::LibRawProcessor)
     _require_open(p)
     GC.@preserve p _sizes(_load(p.handle, Val(:sizes)))
 end
 """
-Copy camera/file identification strings and channel descriptors into [`ImageIdentity`](@ref); requires an opened input.
+Copy camera and file identification strings and channel descriptors into [`ImageIdentity`](@ref). Requires an opened input.
 """
 function image_identity(p::LibRawProcessor)
     _require_open(p)
@@ -100,7 +100,7 @@ function _color_data(c::Ptr{libraw_colordata_t})
     )
 end
 """
-Copy current calibration into [`ColorData`](@ref); processing may change it, while `snapshot(p).sensor_color` retains unpack-time values.
+Copy current calibration into [`ColorData`](@ref). Processing may change these fields; `snapshot(p).sensor_color` retains the values copied during unpacking.
 """
 function color_data(p::LibRawProcessor)
     _require_open(p)
@@ -111,10 +111,11 @@ end
     tone_curve(p::LibRawProcessor) -> Vector{UInt16}
 
 Copy the 65,536-entry sensor tone-curve table saved in native raw data. Requires
-unpacking; neither runs processing nor returns the configured output gamma curve.
+unpacking. This does not run processing or return the configured output gamma curve.
 Julia entry `i + 1` corresponds to native curve index `i`. Use this alongside
-[`sensor_image`](@ref) when inspecting decoder calibration; the vector remains
-valid after the processor closes.
+[`sensor_image`](@ref) when inspecting decoder calibration. The vector remains
+valid after the processor closes. Some decoders apply this table during
+unpacking, so it is not an instruction to apply it again to sensor samples.
 
 See [`libraw_colordata_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_colordata_t).
 """
@@ -127,7 +128,7 @@ function tone_curve(p::LibRawProcessor)
     end
 end
 """
-Copy exposure, timestamp, description, and artist fields into [`ImageOther`](@ref); requires an opened input.
+Copy exposure, timestamp, description, and artist fields into [`ImageOther`](@ref). Requires an opened input.
 """
 function image_other(p::LibRawProcessor)
     _require_open(p)
@@ -144,7 +145,7 @@ function image_other(p::LibRawProcessor)
     )
 end
 """
-Copy lens identification and focal/aperture limits into [`LensInfo`](@ref); requires an opened input.
+Copy lens identification and focal/aperture limits into [`LensInfo`](@ref). Requires an opened input.
 """
 function lens_info(p::LibRawProcessor)
     _require_open(p)
@@ -161,7 +162,7 @@ function lens_info(p::LibRawProcessor)
     )
 end
 """
-Copy camera shooting modes and serial numbers into [`ShootingInfo`](@ref); requires an opened input.
+Copy camera shooting modes and serial numbers into [`ShootingInfo`](@ref). Requires an opened input.
 """
 function shooting_info(p::LibRawProcessor)
     _require_open(p)
@@ -179,7 +180,7 @@ function shooting_info(p::LibRawProcessor)
     )
 end
 """
-Copy [`ThumbnailInfo`](@ref) from an opened input; `data` is empty until a thumbnail has been unpacked.
+Copy [`ThumbnailInfo`](@ref) from an opened input. The `data` field is empty until a thumbnail has been unpacked.
 """
 function thumbnail_info(p::LibRawProcessor)
     _require_open(p)
@@ -199,7 +200,7 @@ function thumbnail_info(p::LibRawProcessor)
     end
 end
 """
-Return [`RawDataInfo`](@ref) using cached unpack-time geometry when available, otherwise current geometry; requires an opened input.
+Return [`RawDataInfo`](@ref) using geometry saved during unpacking, or current geometry if not yet unpacked. Requires an opened input.
 """
 function raw_data_info(p::LibRawProcessor)
     _require_open(p)
@@ -221,13 +222,13 @@ end
 
 Copy the current supported metadata into a value that can outlive the processor.
 Requires an opened input, but does not unpack or render. `state` records the
-observed lifecycle stage; `color` reflects current calibration and `sensor_color`
+observed lifecycle stage. `color` reflects current calibration and `sensor_color`
 contains the separately copied unpack-time calibration, or `nothing` before
 unpacking. Thumbnail bytes are included only after thumbnail unpacking.
 
-Arrays and dictionaries are independent copies, not deeply immutable values.
-`maker_notes` currently contains vendor keys with `nothing` placeholders;
-detailed vendor values remain available through the raw API. `dng[:entries]`
+Arrays and dictionaries are independent, mutable copies. `maker_notes`
+currently contains vendor keys with `nothing` placeholders. Detailed vendor
+values remain available through the raw API. `dng[:entries]`
 contains copied native DNG color entries, not every DNG tag.
 
 ```julia

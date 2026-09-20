@@ -2,10 +2,10 @@
 # Julia's column-major arrays, including crops, without retaining native views.
 """
 Copy a pitched native pixel buffer into Julia row/column/channel indexing, optionally
-cropping while copying. Validate dimensions and byte pitch before pointer reads;
-callers must provide valid storage and ascending in-bounds crop ranges and keep
-the native owner alive. This is the shared ownership boundary for sensor,
-working, processed, and bitmap-thumbnail pixels.
+cropping while copying. Validate dimensions and byte pitch before pointer reads.
+Callers must provide valid storage and ascending in-bounds crop ranges and keep
+the native owner alive. Used by sensor images, working buffers, rendered images,
+and bitmap thumbnails.
 """
 function _copy_pixels(
     ptr::Ptr{T},
@@ -105,7 +105,7 @@ function _sensor_layout(p)
 end
 
 """
-Select the single active native sensor pointer and channel count; reject ambiguous or absent buffers before copying.
+Select the active native sensor pointer and channel count, rejecting ambiguous or absent buffers before copying.
 """
 function _sensor_buffer(raw::Ptr{libraw_rawdata_t})
     candidates = (
@@ -126,16 +126,18 @@ end
     sensor_image(p::LibRawProcessor; visible=false) -> SensorImage
 
 Copy unpacked sensor samples for calibration or custom image processing. Requires
-`Unpacked`, `Working`, or `Processed`. A single-plane sensor yields a matrix;
-multichannel data yields `(height, width, channels)`. Samples are `UInt16` or
-`Float32`, depending on the active native buffer. This does not demosaic,
-subtract black levels, rotate, or build LibRaw's working image.
+`Unpacked`, `Working`, or `Processed`. A single-plane sensor yields a matrix,
+and multichannel data yields `(height, width, channels)`. Samples are `UInt16` or
+`Float32`, depending on the active native buffer. This copy adds no demosaicing,
+black subtraction, rotation, or tone mapping. The camera or decoder may already
+have corrected the samples, including black subtraction. LibRaw's default
+unpacking also converts floating-point RAW data to integers when applicable.
 
 With `visible=true`, remove margins using the geometry saved during unpacking.
 The result retains that geometry and a one-based `origin` in the full sensor,
 so CFA lookup stays aligned after cropping. Data and layout are independent
 copies. Unsupported layouts, including rotated Fuji geometry, throw
-`ArgumentError`; they may still be renderable through [`postprocess!`](@ref).
+`ArgumentError`. They may still be renderable through [`postprocess!`](@ref).
 
 ```julia
 sensor = openraw("photo.nef") do p
@@ -179,7 +181,7 @@ end
 Return a copied tile of one-based channel indices aligned with the first pixel
 of this sensor snapshot, including its crop origin. Return `nothing` for a
 non-CFA layout. Indices address `sensor.layout.channel_labels`, not a fixed RGB
-ordering; separate green channels may have different indices. See
+ordering. Separate green channels may have different indices. See
 [`color_index`](@ref) for per-pixel lookup.
 """
 cfa_pattern(s::SensorImage) = nothing

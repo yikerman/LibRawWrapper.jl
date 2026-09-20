@@ -1,5 +1,5 @@
 """
-Store a value after conversion to the generated native field type; the caller preserves the owner.
+Store a value after conversion to the generated native field type. The caller must keep the owner alive.
 """
 function _setfield!(ptr, field::Val, value)
     dest = _fieldptr(ptr, field)
@@ -41,14 +41,14 @@ end
     process!(p::LibRawProcessor, params::ProcessingParams) -> LibRawProcessor
 
 Run LibRaw's rendering pipeline on unpacked data and retain the native result.
-Requires `Unpacked`, `Working`, or `Processed`; enters [`Processed`](@ref) on
+Requires `Unpacked`, `Working`, or `Processed`. Enters [`Processed`](@ref) on
 success. Pass either a complete [`ProcessingParams`](@ref) value or its keyword
 options. Each call restores native defaults before applying the supplied options
-and rerenders from the original sensor data, making repeated configurations
-independent.
+and rerenders from the original sensor data. Settings from earlier renders
+do not carry over.
 
-Use this when rendering and copying are separate steps; [`postprocess!`](@ref)
-combines them. Native failures throw [`LibRawError`](@ref); fatal failures require
+Use this to render without copying the result. [`postprocess!`](@ref) combines
+both steps. Native failures throw [`LibRawError`](@ref). Fatal failures require
 recycling or reopening before further work.
 
 ```julia
@@ -59,7 +59,7 @@ openraw("photo.nef") do p
 end
 ```
 
-Wraps `libraw_dcraw_process`; see [LibRaw processing](https://www.libraw.org/docs/API-CXX.html#dcraw_process).
+Wraps `libraw_dcraw_process`. See [LibRaw processing](https://www.libraw.org/docs/API-CXX.html#dcraw_process).
 """
 function process!(p::LibRawProcessor, params::ProcessingParams; kwargs...)
     isempty(kwargs) ||
@@ -125,12 +125,15 @@ end
 """
     processed_image(p::LibRawProcessor) -> ProcessedImage
 
-Copy the last successful render without running the pipeline again. Requires
-[`Processed`](@ref); returns an owned `(height, width, channels)` array with
-`UInt8` or `UInt16` samples and its [`OutputMetadata`](@ref). Every call allocates
-a new copy that remains valid after recycling or closing the processor.
+Export the last successful render through LibRaw's memory-image API. Requires
+[`Processed`](@ref). Native export applies output gamma, brightness, orientation,
+and bit depth without repeating demosaicing. Return a [`ProcessedImage`](@ref)
+with owned `(height, width, channels)` data and [`OutputMetadata`](@ref). Each
+call allocates a new copy that survives recycling or closing the processor.
 
-See [`process!`](@ref) for a two-step example and
+See [`process!`](@ref) for a two-step example,
+[`LibRaw::dcraw_make_mem_image`](https://www.libraw.org/docs/API-CXX.html#dcraw_make_mem_image)
+for native export, and
 [`libraw_processed_image_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_processed_image_t)
 for the native representation.
 """
@@ -166,7 +169,7 @@ postprocess!(p::LibRawProcessor; kwargs...) = postprocess!(p, ProcessingParams(;
 
 Load an embedded preview without requiring sensor unpacking. Requires an opened
 input and leaves its main lifecycle state unchanged. `index=nothing` uses
-LibRaw's default thumbnail selection; explicit indices are **one-based** and
+LibRaw's default thumbnail selection. Explicit indices are **one-based** and
 checked against the native thumbnail list. Call [`thumbnail`](@ref) to copy it,
 or [`extract_thumbnail!`](@ref) for the combined operation.
 
@@ -195,7 +198,7 @@ end
 
 Copy the currently unpacked preview as [`JPEGThumbnail`](@ref) or
 [`BitmapThumbnail`](@ref). Requires a successful [`unpack_thumbnail!`](@ref)
-for the current input; this call does not unpack anything itself. The result is
+for the current input. This call does not unpack anything itself. The result is
 independent of the processor's lifetime. See [`extract_thumbnail!`](@ref) for
 usage and missing-thumbnail handling.
 """
@@ -210,7 +213,9 @@ end
 Unpack and copy an embedded preview without decoding the full sensor image.
 Return [`JPEGThumbnail`](@ref), [`BitmapThumbnail`](@ref), or `nothing` only
 when LibRaw reports that no thumbnail exists. Corrupt input, unsupported formats,
-and invalid indices still throw. An explicit `index` is one-based.
+and invalid indices still throw. JPEG XL and H.265 previews supported by native
+LibRaw 0.22.2 are not represented by the managed result types and raise
+`ArgumentError`. An explicit `index` is one-based.
 
 ```julia
 openraw("photo.nef"; unpack=false) do p
@@ -224,7 +229,7 @@ openraw("photo.nef"; unpack=false) do p
 end
 ```
 
-JPEG dimensions reported by LibRaw may be zero; decode the JPEG bytes when
+JPEG dimensions reported by LibRaw may be zero. Decode the JPEG bytes when
 reliable dimensions are needed. See
 [`libraw_processed_image_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_processed_image_t).
 """

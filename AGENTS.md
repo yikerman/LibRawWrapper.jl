@@ -37,6 +37,12 @@ results. Keep those responsibilities distinct.
    recovery, crop/CFA phase, and repeat rendering. Run the checks relevant to the
    change; a successful docs build is not evidence of camera-format coverage.
 
+- Follow [Diátaxis](https://diataxis.fr/): tutorials teach through a guided lesson,
+  how-to guides solve specific tasks, reference describes the API, and explanation
+  develops understanding. Keep each focused on its reader's need and cross-link
+  related material. Assume familiarity with Julia and Pkg. Explain RAW concepts
+  and wrapper behavior without narrating basic Julia workflows.
+
 ## Ownership and lifecycle invariants
 
 - High-level results must survive `recycle!` and `close!`. Immutable struct fields
@@ -61,6 +67,8 @@ results. Keep those responsibilities distinct.
 
 Julia 1.12 is the declared minimum. `make deps` instantiates the root and `tools/`
 environments. The latter contains Clang, Documenter, and JuliaFormatter.
+The package is not registered in General yet. User-facing installation examples
+must use `Pkg.add(url="https://github.com/yikerman/LibRawWrapper.jl.git")`.
 
 - `make test`: package regressions; `make test-examples`: all runnable examples.
 - `make check`: dependency setup, package loading, tests, and examples.

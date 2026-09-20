@@ -23,5 +23,11 @@ makedocs(
         repolink = "https://github.com/yikerman/LibRawWrapper.jl",
     ),
     checkdocs = :exports,
-    pages = ["Home" => "index.md", "API Reference" => "api.md"],
+    pages = [
+        "Home" => "index.md",
+        "Tutorial" => "tutorial.md",
+        "How-to guides" => "how-to.md",
+        "Reference" => "api.md",
+        "Explanation" => "explanation.md",
+    ],
 )

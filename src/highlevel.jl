@@ -1,5 +1,5 @@
 """
-Exception with `operation::Symbol`, native `code::Int`, and `message::String`; see [`isfatal`](@ref) for recovery.
+Exception with `operation::Symbol`, native `code::Int`, and `message::String`. See [`isfatal`](@ref) for recovery.
 """
 struct LibRawError <: Exception
     operation::Symbol
@@ -15,7 +15,7 @@ Base.showerror(io::IO, e::LibRawError) =
     isfatal(error::LibRawError) -> Bool
 
 Report whether LibRaw classified the error as fatal (`code < -100000`). Managed
-calls mark the processor [`Failed`](@ref) on these errors; use [`recycle!`](@ref)
+calls mark the processor [`Failed`](@ref) on these errors. Use [`recycle!`](@ref)
 or [`open!`](@ref) before continuing. A nonfatal error still means that the
 requested operation did not succeed.
 
@@ -31,14 +31,14 @@ isfatal(e::LibRawError) = e.code < -100000
 # Address individual fields without materializing enormous ABI tuples (notably
 # color.curve and maker notes). Layout remains defined by the generated types.
 """
-Locate a field using generated ABI offsets without copying large native structs; the caller must keep the owner alive.
+Locate a field using generated ABI offsets without copying large native structs. The caller must keep the owner alive.
 """
 function _fieldptr(ptr::Ptr{T}, ::Val{F}) where {T,F}
     i = Base.fieldindex(T, F)
     Ptr{fieldtype(T, i)}(Ptr{UInt8}(ptr) + fieldoffset(T, i))
 end
 """
-Read one native field without materializing its enclosing ABI struct; the caller preserves the owner.
+Read one native field without copying its enclosing ABI struct. The caller must keep the owner alive.
 """
 _load(ptr, field::Val) = unsafe_load(_fieldptr(ptr, field))
 
@@ -47,9 +47,9 @@ _load(ptr, field::Val) = unsafe_load(_fieldptr(ptr, field))
 
 Allocate a native LibRaw processor in the [`Empty`](@ref) state. `flags` is passed
 to `libraw_init`. The object owns the handle and any copied buffer input. Prefer
-[`openraw`](@ref) with a do-block for automatic cleanup; manual users must call
-[`close!`](@ref), with a finalizer as a fallback. Use one processor per task or
-synchronize all access, including closing.
+[`openraw`](@ref) with a do-block for automatic cleanup. Otherwise, call
+[`close!`](@ref) when finished. A finalizer provides fallback cleanup. Use one
+processor per task or synchronize all access, including closing.
 
 ```julia
 p = LibRawProcessor()
@@ -95,11 +95,11 @@ function LibRawProcessor(flags::Integer = 0)
     p
 end
 """
-Return whether the native handle is allocated; `true` also includes `Empty` and `Failed` processors.
+Return whether the native handle is allocated, including in the `Empty` and `Failed` states.
 """
 Base.isopen(p::LibRawProcessor) = p.state != Closed && p.handle != C_NULL
 """
-Release native resources, enter `Closed`, and return `nothing`; repeated calls are harmless and copied results survive.
+Release native resources, enter `Closed`, and return `nothing`. Repeated calls are harmless, and copied results survive.
 """
 function Base.close(p::LibRawProcessor)
     if isopen(p)
@@ -111,7 +111,7 @@ function Base.close(p::LibRawProcessor)
     nothing
 end
 """
-Alias for [`close(::LibRawProcessor)`](@ref); release the handle permanently and return `nothing`.
+Alias for [`close(::LibRawProcessor)`](@ref), releasing the handle permanently and returning `nothing`.
 """
 close!(p::LibRawProcessor) = close(p)
 
@@ -155,7 +155,7 @@ Require sensor unpacking to have completed, including working or processed stage
 _require_unpacked(p) = _require(p, Unpacked, Working, Processed)
 
 """
-Translate native failures to `LibRawError` and invalidate output after fatal errors; return the processor on success.
+Throw `LibRawError` on native failures and invalidate output after fatal errors. Return the processor on success.
 """
 function _check(p, op, code)
     if code != 0
@@ -174,12 +174,15 @@ end
 
 Release the current input and native image buffers while keeping the handle for
 another file. Reset processing options to the defaults captured at construction,
-clear cached metadata/output, and enter [`Empty`](@ref). This also recovers from
+clear cached metadata and output, and enter [`Empty`](@ref). This also recovers from
 [`Failed`](@ref), but a closed processor cannot be recycled. Previously copied
 images and snapshots remain usable.
 
-[`open!`](@ref) already recycles before opening a new source; call this explicitly
-when releasing the current file without immediately replacing it.
+Restoring output defaults is wrapper behavior. Native `libraw_recycle` retains
+those parameters.
+
+Call this explicitly to release the current file without immediately replacing
+it. [`open!`](@ref) recycles automatically before opening a new source.
 See [LibRaw recycling](https://www.libraw.org/docs/API-CXX.html#recycle).
 """
 function recycle!(p::LibRawProcessor)
@@ -197,7 +200,7 @@ end
 
 Replace the current input and read its metadata, entering [`Opened`](@ref).
 `source` accepts a file path, an `AbstractVector{UInt8}`, or an `IO`. This does
-not unpack sensor pixels; call [`unpack!`](@ref) before rendering or sensor access.
+not unpack sensor pixels. Call [`unpack!`](@ref) before rendering or sensor access.
 The previous input and processing options are reset through [`recycle!`](@ref).
 
 Byte vectors are copied and retained until recycling or closing, so the caller
@@ -289,8 +292,8 @@ end
     unpack!(p::LibRawProcessor) -> LibRawProcessor
 
 Decode the opened RAW input into native sensor buffers, cache its original
-geometry/calibration/CFA layout, and enter [`Unpacked`](@ref). Requires
-[`Opened`](@ref); a second unpack without reopening is rejected. This stage is
+geometry, calibration, and CFA layout, and enter [`Unpacked`](@ref). Requires
+[`Opened`](@ref). A second unpack without reopening is rejected. This stage is
 needed by [`sensor_image`](@ref) and [`process!`](@ref), but not by metadata or
 thumbnail inspection. [`openraw`](@ref) performs it by default.
 
@@ -315,9 +318,9 @@ end
     prepare_image!(p::LibRawProcessor) -> LibRawProcessor
 
 Build LibRaw's four-channel working buffer from unpacked sensor data. Requires
-`Unpacked`, `Working`, or `Processed`; enters [`Working`](@ref) and invalidates
-the previous processed output. This exposes an intermediate stage for inspection;
-normal rendering through [`postprocess!`](@ref) does not require this call.
+`Unpacked`, `Working`, or `Processed`. Enters [`Working`](@ref) and invalidates
+the previous processed output. Use this to inspect the intermediate buffer.
+Rendering through [`postprocess!`](@ref) does not require this call.
 
 ```julia
 openraw("photo.nef") do p
@@ -326,7 +329,7 @@ openraw("photo.nef") do p
 end
 ```
 
-Wraps `libraw_raw2image`; see [`LibRaw::raw2image`](https://www.libraw.org/docs/API-CXX.html#raw2image).
+Wraps `libraw_raw2image`. See [`LibRaw::raw2image`](https://www.libraw.org/docs/API-CXX.html#raw2image).
 """
 function prepare_image!(p::LibRawProcessor)
     _require_unpacked(p)
@@ -340,9 +343,9 @@ end
 
 Copy the current four-channel working buffer in `(height, width, 4)` order.
 Requires [`Working`](@ref) or [`Processed`](@ref). Its content depends on the
-processing stage; it is not the original sensor plane or a formatted output image.
-Use [`sensor_image`](@ref) for sensor samples and [`processed_image`](@ref) for
-rendered output with its output depth and orientation. The copy survives closing.
+processing stage. Use [`sensor_image`](@ref) for decoded sensor samples or
+[`processed_image`](@ref) for rendered output with its depth and orientation.
+The copy survives closing.
 """
 function working_image(p::LibRawProcessor)
     _require(p, Working, Processed)
@@ -353,7 +356,7 @@ function working_image(p::LibRawProcessor)
     end
 end
 """
-Copy the current 3×4 camera-to-sRGB matrix from [`color_data`](@ref); requires an opened input.
+Copy the current 3×4 camera-to-sRGB matrix from [`color_data`](@ref). Requires an opened input.
 """
 rgb_cam_matrix(p::LibRawProcessor) = color_data(p).rgb_cam
 """
@@ -362,8 +365,10 @@ rgb_cam_matrix(p::LibRawProcessor) = color_data(p).rgb_cam
 Return a compact summary for file identification: `make`, `model`, `width`,
 `height`, `iso`, `shutter` (seconds), `aperture` (f-number), and `focal_length`
 (millimetres). Requires an opened input. Dimensions come from the current
-`iwidth`/`iheight`, so they can change with processing; use [`snapshot`](@ref)
-for more complete, stage-specific metadata.
+`iwidth` and `iheight`, so they can change with processing. Use [`snapshot`](@ref)
+for more detailed metadata at the current stage. For final output dimensions,
+use `size(image.data)` on a [`ProcessedImage`](@ref), which accounts for output
+rotation and native geometry corrections.
 
 ```julia
 openraw("photo.nef"; unpack=false) do p
@@ -408,9 +413,8 @@ end
     warnings(p::LibRawProcessor) -> ProcessingWarnings
 
 Copy native warning flags for the current input. Requires an opened, usable
-processor. Warnings describe recoverable conditions or processing information;
-they do not replace exceptions for failed operations. Inspect them after a render
-to detect native fallbacks, for example.
+processor. Warnings describe recoverable conditions or processing information,
+such as fallbacks during a render. Failed operations still throw exceptions.
 
 ```julia
 openraw("photo.nef") do p
