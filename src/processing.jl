@@ -1,13 +1,22 @@
+"""
+Store a value after conversion to the generated native field type; the caller preserves the owner.
+"""
 function _setfield!(ptr, field::Val, value)
     dest = _fieldptr(ptr, field)
     unsafe_store!(dest, convert(eltype(typeof(dest)), value))
 end
 
+"""
+Apply one white-balance strategy after defaults are restored, preventing mutually exclusive flags from accumulating.
+"""
 _apply_wb!(params, ::DaylightWB) = nothing
 _apply_wb!(params, ::CameraWB) = _setfield!(params, Val(:use_camera_wb), 1)
 _apply_wb!(params, ::AutoWB) = _setfield!(params, Val(:use_auto_wb), 1)
 _apply_wb!(params, wb::CustomWB) = _setfield!(params, Val(:user_mul), wb.coefficients)
 
+"""
+Replace all native output options from a validated configuration and return matching Julia output metadata.
+"""
 function _apply_params!(p, options::ProcessingParams{T}) where {T}
     params = _fieldptr(p.handle, Val(:params))
     # Reset the entire default record, including mutually exclusive WB flags and
@@ -27,8 +36,30 @@ function _apply_params!(p, options::ProcessingParams{T}) where {T}
     OutputMetadata(options.color_space, gamma, options.orientation, options.half_size)
 end
 
-"""Render unpacked data through LibRaw with a complete validated configuration.
-Repeated calls start from the original sensor data. Returns the processor.
+"""
+    process!(p::LibRawProcessor; kwargs...) -> LibRawProcessor
+    process!(p::LibRawProcessor, params::ProcessingParams) -> LibRawProcessor
+
+Run LibRaw's rendering pipeline on unpacked data and retain the native result.
+Requires `Unpacked`, `Working`, or `Processed`; enters [`Processed`](@ref) on
+success. Pass either a complete [`ProcessingParams`](@ref) value or its keyword
+options. Each call restores native defaults before applying the supplied options
+and rerenders from the original sensor data, making repeated configurations
+independent.
+
+Use this when rendering and copying are separate steps; [`postprocess!`](@ref)
+combines them. Native failures throw [`LibRawError`](@ref); fatal failures require
+recycling or reopening before further work.
+
+```julia
+openraw("photo.nef") do p
+    process!(p; half_size=true, white_balance=CameraWB())
+    report = warnings(p)
+    image = processed_image(p)
+end
+```
+
+Wraps `libraw_dcraw_process`; see [LibRaw processing](https://www.libraw.org/docs/API-CXX.html).
 """
 function process!(p::LibRawProcessor, params::ProcessingParams; kwargs...)
     isempty(kwargs) ||
@@ -46,6 +77,9 @@ function process!(p::LibRawProcessor, params::ProcessingParams; kwargs...)
 end
 process!(p::LibRawProcessor; kwargs...) = process!(p, ProcessingParams(; kwargs...))
 
+"""
+Validate a native bitmap payload against its dimensions and bit depth before copying samples into a Julia array.
+"""
 function _bitmap(ptr::Ptr{UInt8}, width, height, channels, bits, nbytes)
     bits in (8, 16) || throw(ArgumentError("unsupported bitmap bit depth: $bits"))
     T = bits == 8 ? UInt8 : UInt16
@@ -55,6 +89,9 @@ function _bitmap(ptr::Ptr{UInt8}, width, height, channels, bits, nbytes)
     _copy_pixels(Ptr{T}(ptr), height, width, channels, pitch)
 end
 
+"""
+Copy a native image or thumbnail into owned Julia storage and always free the temporary native allocation, including on errors.
+"""
 function _memory_image(p, op, maker; thumbnail::Bool = false)
     GC.@preserve p begin
         err = Ref{Cint}(0)
@@ -85,19 +122,57 @@ function _memory_image(p, op, maker; thumbnail::Bool = false)
     end
 end
 
-"""Copy the last rendered image to a typed Julia array; does not run processing."""
+"""
+    processed_image(p::LibRawProcessor) -> ProcessedImage
+
+Copy the last successful render without running the pipeline again. Requires
+[`Processed`](@ref); returns an owned `(height, width, channels)` array with
+`UInt8` or `UInt16` samples and its [`OutputMetadata`](@ref). Every call allocates
+a new copy that remains valid after recycling or closing the processor.
+
+See [`process!`](@ref) for a two-step example and
+[`libraw_processed_image_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_processed_image_t)
+for the native representation.
+"""
 function processed_image(p::LibRawProcessor)
     _require(p, Processed)
     _memory_image(p, :make_mem_image, libraw_dcraw_make_mem_image)
 end
-"""Render and return an owned `ProcessedImage{T}`. Requires prior unpacking."""
+"""
+    postprocess!(p::LibRawProcessor; kwargs...) -> ProcessedImage
+    postprocess!(p::LibRawProcessor, params::ProcessingParams{T}) -> ProcessedImage{T}
+
+Render and copy a Julia-owned image by combining [`process!`](@ref) and
+[`processed_image`](@ref). Sensor unpacking must already have completed. Choose
+options through [`ProcessingParams`](@ref) or keywords, not both. The processor
+remains `Processed`, and the returned image can outlive it.
+
+```julia
+image = openraw("photo.nef") do p
+    postprocess!(p; output_type=UInt16, white_balance=CameraWB(),
+        gamma=(1, 1), auto_bright=false)
+end
+pixels = image.data  # height × width × channels; UInt16, linear gamma
+```
+"""
 function postprocess!(p::LibRawProcessor, params::ProcessingParams{T}; kwargs...) where {T}
     process!(p, params; kwargs...)
     processed_image(p)::ProcessedImage{T}
 end
 postprocess!(p::LibRawProcessor; kwargs...) = postprocess!(p, ProcessingParams(; kwargs...))
 
-"""Unpack an embedded thumbnail; `index` is one-based when provided."""
+"""
+    unpack_thumbnail!(p::LibRawProcessor, index=nothing) -> LibRawProcessor
+
+Load an embedded preview without requiring sensor unpacking. Requires an opened
+input and leaves its main lifecycle state unchanged. `index=nothing` uses
+LibRaw's default thumbnail selection; explicit indices are **one-based** and
+checked against the native thumbnail list. Call [`thumbnail`](@ref) to copy it,
+or [`extract_thumbnail!`](@ref) for the combined operation.
+
+Missing thumbnails throw `LibRawError` here. See
+[LibRaw thumbnail unpacking](https://www.libraw.org/docs/API-CXX.html).
+"""
 function unpack_thumbnail!(p::LibRawProcessor, index::Union{Nothing,Integer} = nothing)
     _require_open(p)
     GC.@preserve p begin
@@ -115,14 +190,43 @@ function unpack_thumbnail!(p::LibRawProcessor, index::Union{Nothing,Integer} = n
     end
     p
 end
-"""Copy the currently unpacked thumbnail into a Julia-owned value."""
+"""
+    thumbnail(p::LibRawProcessor) -> AbstractThumbnail
+
+Copy the currently unpacked preview as [`JPEGThumbnail`](@ref) or
+[`BitmapThumbnail`](@ref). Requires a successful [`unpack_thumbnail!`](@ref)
+for the current input; this call does not unpack anything itself. The result is
+independent of the processor's lifetime. See [`extract_thumbnail!`](@ref) for
+usage and missing-thumbnail handling.
+"""
 function thumbnail(p::LibRawProcessor)
     _require_open(p)
     p.thumbnail_ready || throw(ArgumentError("thumbnail has not been unpacked"))
     _memory_image(p, :make_mem_thumb, libraw_dcraw_make_mem_thumb; thumbnail = true)
 end
-"""Extract a JPEG or bitmap thumbnail. Return `nothing` only when no thumbnail exists.
-An explicit `index` is one-based; unsupported formats and corrupt data throw.
+"""
+    extract_thumbnail!(p::LibRawProcessor; index=nothing)
+
+Unpack and copy an embedded preview without decoding the full sensor image.
+Return [`JPEGThumbnail`](@ref), [`BitmapThumbnail`](@ref), or `nothing` only
+when LibRaw reports that no thumbnail exists. Corrupt input, unsupported formats,
+and invalid indices still throw. An explicit `index` is one-based.
+
+```julia
+openraw("photo.nef"; unpack=false) do p
+    thumb = extract_thumbnail!(p)
+    if thumb isa JPEGThumbnail
+        write("preview.jpg", thumb.data)
+    elseif thumb isa BitmapThumbnail
+        pixels = thumb.data # height × width × channels; encode with an image writer
+        println(size(pixels))
+    end
+end
+```
+
+JPEG dimensions reported by LibRaw may be zero; decode the JPEG bytes when
+reliable dimensions are needed. See
+[`libraw_processed_image_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_processed_image_t).
 """
 function extract_thumbnail!(p::LibRawProcessor; index::Union{Nothing,Integer} = nothing)
     try

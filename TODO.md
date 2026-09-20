@@ -14,7 +14,8 @@ snapshots and image data.
 - CFA-aware Bayer/X-Trans access, visible crops, channel indices, and floating-
   point or multichannel sensor buffers.
 - Snapshots for core image, color, lens, shooting, thumbnail, and raw-data
-  metadata, with ad-hoc dictionaries for maker notes and DNG entries.
+  metadata, with copied DNG color entries; maker-note dictionaries currently
+  contain vendor keys with placeholder values.
 
 ## Remaining
 
@@ -34,10 +35,6 @@ Callback records, custom datastream classes, internal decoder structures, and
 complete vendor maker-note layouts remain available through `LibRawRaw`. They
 should not become stable typed APIs until pointer ownership and version
 compatibility are defined.
-
-## References
-
-See the [LibRaw C API](https://www.libraw.org/docs/API-C.html), [data structures](https://www.libraw.org/docs/API-datastruct-eng.html), and [API notes](https://www.libraw.org/docs/API-notes.html). The Python [rawpy API](https://letmaik.github.io/rawpy/api/) is a useful reference for user-facing RAW workflows, but this package keeps Julia-native types and snapshot ownership semantics instead of reproducing rawpy's interface.
 
 ## Alternative binding distribution
 

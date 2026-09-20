@@ -20,11 +20,35 @@ openraw("photo.nef") do raw
 end
 ```
 
-`open!` also accepts a `Vector{UInt8}`. The processor retains that vector until
+`open!` also accepts a byte vector or IO. The processor retains a copied vector until
 `recycle!` or `close!`, so the native reader never references dead Julia memory.
 Required operation failures throw `LibRawError` with the LibRaw error code and
-message. `close!` is safe to call more than once and is also registered as a
-finalizer.
+message. `close!` is safe to call more than once; `close` is also registered as a
+finalizer. See [`ProcessingParams`](@ref) for every rendering keyword and default.
+
+### Lifecycle and ownership
+
+| Operation | Required state | Resulting state |
+|:--|:--|:--|
+| `open!` | Any except `Closed` | `Opened` |
+| `unpack!` | `Opened` | `Unpacked` |
+| `prepare_image!` | `Unpacked`, `Working`, `Processed` | `Working` |
+| `process!` / `postprocess!` | `Unpacked`, `Working`, `Processed` | `Processed` |
+| `unpack_thumbnail!` | Any opened, usable input | Unchanged on success |
+| `recycle!` | Any except `Closed` | `Empty` |
+| `close!` / `close` | Any | `Closed` |
+
+Metadata access needs an opened input; sensor access needs unpacking; rendered
+output access needs a successful render. Fatal native errors enter `Failed`,
+which requires recycling or reopening. Invalid lifecycle calls throw
+`ArgumentError`. [`warnings`](@ref) reports recoverable native conditions and
+processing information separately from exceptions. `isopen(p)` means a handle
+exists, so it can be true even for an empty or failed processor.
+
+Use one processor per task or synchronize access. Owned results survive closing,
+but the processor itself is mutable and snapshots are not atomic under concurrent
+access. `open!` and `recycle!` restore default processing options; repeated renders
+apply a complete configuration to the original sensor data.
 
 ## Data snapshots
 
@@ -36,14 +60,12 @@ The underlying LibRaw processor is a mutable, stateful object. Calls such as
 directly is therefore stage-dependent and has observable side effects through
 the processor's lifetime and ownership rules.
 
-`snapshot(p)` provides a stable boundary: it reads the current processor state
-once and copies supported values into Julia-owned immutable structs, arrays,
-strings, and dictionaries. The result is safe to retain, compare, serialize,
-or use after the processor is recycled or closed. Taking a snapshot does not
-make the LibRaw processor itself pure; it produces a pure value representing
-the state observed at that point in the workflow.
+`snapshot(p)` copies supported values into Julia-owned structs, arrays, strings,
+and dictionaries. The result can be retained after the processor is recycled or
+closed. Struct fields cannot be reassigned, but their arrays and dictionaries
+remain mutable. The snapshot records the processing stage at which it was taken.
 
-The documented LibRaw aggregates can be copied into immutable Julia-owned
+The supported LibRaw aggregates can be copied into Julia-owned
 values with `snapshot(p)`, or individually with `image_sizes`, `image_identity`,
 `color_data`, `image_other`, `lens_info`, `shooting_info`, `thumbnail_info`, and
 `raw_data_info`. For example:
@@ -59,6 +81,9 @@ end
 
 These snapshots remain valid after `recycle!(p)` or `close!(p)`. The generated
 `LibRawRaw` structs remain available when exact ABI-level access is required.
+`sensor_color` holds unpack-time calibration, while `color` reflects the current
+stage. `maker_notes` currently holds vendor keys with `nothing` placeholders;
+`dng[:entries]` contains copied native DNG color entries, not every DNG tag.
 
 ## High-level recipes
 
@@ -112,13 +137,14 @@ openraw("photo.nef") do p
         demosaic=AHD, auto_bright=true)
     # `rendered.data` is safe to retain after close! or recycle!.
     println(size(rendered.data), " ", eltype(rendered.data), " ", rendered.metadata)
-    write("photo.rgb", rendered.data)
 end
 ```
 
 The result contains a copied typed array in height × width × channel order and
-an `OutputMetadata` value describing the rendering settings. The array can be
-passed directly to the caller’s preferred Julia image package.
+an `OutputMetadata` value describing the rendering settings. Convert it to the
+representation expected by your image writer before encoding a file; Julia's
+array storage is not interleaved RGB file order. Color space and gamma are
+separate settings; choosing `SRGB` does not itself select the sRGB transfer curve.
 
 ### Load from a memory buffer
 
@@ -147,6 +173,9 @@ end
 
 Some formats legitimately have no thumbnail. That optional stage can fail while
 the main RAW image remains processable.
+JPEG dimensions may be zero; decode the JPEG bytes if dimensions are needed.
+The recipe writes the payload as-is: JPEG bytes are encoded, whereas bitmap
+pixels need an image encoder to produce a standard image file.
 
 ### Reuse one processor for multiple files
 

@@ -1,5 +1,12 @@
 # LibRaw stores pixels in row-major order with a byte pitch. Copy directly into
 # Julia's column-major arrays, including crops, without retaining native views.
+"""
+Copy a pitched native pixel buffer into Julia row/column/channel indexing, optionally
+cropping while copying. Validate dimensions and byte pitch before pointer reads;
+callers must provide valid storage and ascending in-bounds crop ranges and keep
+the native owner alive. This is the shared ownership boundary for sensor,
+working, processed, and bitmap-thumbnail pixels.
+"""
 function _copy_pixels(
     ptr::Ptr{T},
     h::Int,
@@ -31,10 +38,16 @@ function _copy_pixels(
     data
 end
 
+"""
+Internal explanation for sensor geometries that cannot be exposed as a rectangular high-level image.
+"""
 struct UnsupportedSensorLayout <: SensorLayout
     reason::String
 end
 
+"""
+Reduce a periodic CFA tile to its smallest repeating rectangle so callers need not interpret a redundant native mask.
+"""
 function _minimal_pattern(tile::Matrix{UInt8})
     h, w = size(tile)
     for rows = 1:h, cols = 1:w
@@ -46,6 +59,12 @@ function _minimal_pattern(tile::Matrix{UInt8})
     copy(tile)
 end
 
+"""
+Classify the unpacked sensor and derive a CFA tile aligned to the full sensor
+origin. LibRaw COLOR coordinates are visible-relative, so compensate for margins
+before caching the pattern. Preserve unsupported-layout reasons for a later
+`sensor_image` error without preventing metadata access or native rendering.
+"""
 function _sensor_layout(p)
     GC.@preserve p begin
         id = _load(p.handle, Val(:idata))
@@ -85,6 +104,9 @@ function _sensor_layout(p)
     end
 end
 
+"""
+Select the single active native sensor pointer and channel count; reject ambiguous or absent buffers before copying.
+"""
 function _sensor_buffer(raw::Ptr{libraw_rawdata_t})
     candidates = (
         (Val(:raw_image), UInt16, 1),
@@ -100,8 +122,32 @@ function _sensor_buffer(raw::Ptr{libraw_rawdata_t})
     Ptr{T}(_load(raw, field)), channels
 end
 
-"""Copy unpacked sensor samples; `visible=true` removes margins without rotating.
-The result retains its original geometry and one-based sensor origin.
+"""
+    sensor_image(p::LibRawProcessor; visible=false) -> SensorImage
+
+Copy unpacked sensor samples for calibration or custom image processing. Requires
+`Unpacked`, `Working`, or `Processed`. A single-plane sensor yields a matrix;
+multichannel data yields `(height, width, channels)`. Samples are `UInt16` or
+`Float32`, depending on the active native buffer. This does not demosaic,
+subtract black levels, rotate, or build LibRaw's working image.
+
+With `visible=true`, remove margins using the geometry saved during unpacking.
+The result retains that geometry and a one-based `origin` in the full sensor,
+so CFA lookup stays aligned after cropping. Data and layout are independent
+copies. Unsupported layouts, including rotated Fuji geometry, throw
+`ArgumentError`; they may still be renderable through [`postprocess!`](@ref).
+
+```julia
+sensor = openraw("photo.nef") do p
+    sensor_image(p; visible=true)
+end
+if sensor.layout isa CFALayout
+    channel = color_index(sensor, 1, 1)
+    println(sensor.layout.channel_labels[channel])
+end
+```
+
+See [`libraw_rawdata_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_rawdata_t).
 """
 function sensor_image(p::LibRawProcessor; visible::Bool = false)
     _require_unpacked(p)
@@ -127,13 +173,39 @@ function sensor_image(p::LibRawProcessor; visible::Bool = false)
     SensorImage(data, deepcopy(layout), s, (first(rows), first(cols)))
 end
 
-"""Copy a CFA tile aligned with this sensor snapshot's first pixel; otherwise `nothing`."""
+"""
+    cfa_pattern(sensor::SensorImage)
+
+Return a copied tile of one-based channel indices aligned with the first pixel
+of this sensor snapshot, including its crop origin. Return `nothing` for a
+non-CFA layout. Indices address `sensor.layout.channel_labels`, not a fixed RGB
+ordering; separate green channels may have different indices. See
+[`color_index`](@ref) for per-pixel lookup.
+"""
 cfa_pattern(s::SensorImage) = nothing
 function cfa_pattern(s::SensorImage{T,N,CFALayout}) where {T,N}
     pattern = s.layout.pattern
     h, w = size(pattern)
     [pattern[mod1(r+s.origin[1]-1, h), mod1(c+s.origin[2]-1, w)] for r = 1:h, c = 1:w]
 end
+"""
+    color_index(sensor::SensorImage, row::Integer, col::Integer) -> UInt8
+
+Find the CFA channel at a one-based position in `sensor.data`. Account for the
+snapshot's full-sensor origin, so the same physical pixel keeps its channel after
+cropping. Throws `BoundsError` outside the data and `ArgumentError` for non-CFA
+layouts. The result indexes `sensor.layout.channel_labels`.
+
+```julia
+openraw("photo.nef") do p
+    sensor = sensor_image(p; visible=true)
+    if sensor.layout isa CFALayout
+        label = sensor.layout.channel_labels[color_index(sensor, 1, 1)]
+        println("top-left channel: ", label)
+    end
+end
+```
+"""
 function color_index(s::SensorImage, row::Integer, col::Integer)
     throw(ArgumentError("color_index requires a CFA sensor image"))
 end
@@ -146,6 +218,15 @@ function color_index(s::SensorImage{T,N,CFALayout}, row::Integer, col::Integer) 
         mod1(col+s.origin[2]-1, size(pattern, 2)),
     ]
 end
+"""
+    color_indices(sensor::SensorImage) -> Matrix{UInt8}
+
+Allocate a channel-index map matching the sensor's rows and columns, using
+[`color_index`](@ref) at every pixel. Useful for channel masks in custom sensor
+processing, for example `green = color_indices(sensor) .== 2` when channel 2 is
+green. Requires a CFA layout. Use [`cfa_pattern`](@ref) when only the small
+repeating tile is needed, avoiding a full-image allocation.
+"""
 color_indices(s::SensorImage) =
     throw(ArgumentError("color_indices requires a CFA sensor image"))
 function color_indices(s::SensorImage{T,N,CFALayout}) where {T,N}
