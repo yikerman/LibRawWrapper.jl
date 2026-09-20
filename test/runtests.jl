@@ -27,6 +27,39 @@ const FIXTURE = joinpath(@__DIR__, "data", "test.nef")
     end
 end
 
+@testset "Rendering and processor reuse" begin
+    openraw(FIXTURE) do p
+        original = image_sizes(p)
+        params = ProcessingParams(
+            output_type = UInt16,
+            half_size = true,
+            white_balance = CameraWB(),
+            gamma = (1, 1),
+            auto_bright = false,
+        )
+        first = postprocess!(p, params)
+        @test eltype(first.data) == UInt16
+        @test size(first.data) == (2760, 4144, 3)
+        @test first.metadata.gamma == (1.0, 1.0)
+        @test maximum(first.data) > minimum(first.data)
+        full = postprocess!(p)
+        @test eltype(full.data) == UInt8
+        @test size(full.data) == (5520, 8288, 3)
+        @test postprocess!(p, params).data == first.data
+
+        open!(p, FIXTURE)
+        unpack!(p)
+        reopened = image_sizes(p)
+        @test (reopened.iwidth, reopened.iheight) == (original.iwidth, original.iheight)
+        @test (metadata(p).width, metadata(p).height) == (8288, 5520)
+        @test postprocess!(p).data == full.data
+        recycle!(p)
+        @test p.state == Empty
+        @test_throws ArgumentError processed_image(p)
+        @test size(first.data) == (2760, 4144, 3)
+    end
+end
+
 @testset "LibRaw C API" begin
     version_ptr = LibRawWrapper.libraw_version()
     @test version_ptr isa Ptr{Cchar}

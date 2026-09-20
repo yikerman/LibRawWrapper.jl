@@ -98,7 +98,12 @@ end
 """Recycle native buffers and reset a processor for another input."""
 function recycle!(p::LibRawProcessor)
     isopen(p) || throw(ArgumentError("LibRawProcessor is closed"))
-    GC.@preserve p libraw_recycle(p.handle)
+    GC.@preserve p begin
+        libraw_recycle(p.handle)
+        # LibRaw retains output options across recycling. Restore defaults before
+        # another open/unpack, where options such as half_size affect geometry.
+        unsafe_store!(_fieldptr(p.handle, Val(:params)), p.defaults)
+    end
     _reset!(p)
 end
 """Open a RAW file path in an existing processor."""
