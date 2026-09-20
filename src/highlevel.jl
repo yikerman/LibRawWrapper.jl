@@ -24,7 +24,7 @@ julia> isfatal(LibRawError(:unpack, -100009, "cancelled"))
 true
 ```
 
-See the [LibRaw C API](https://www.libraw.org/docs/API-C.html) for native error handling.
+See [LibRaw error handling](https://www.libraw.org/docs/API-notes.html#errors).
 """
 isfatal(e::LibRawError) = e.code < -100000
 
@@ -63,7 +63,7 @@ end
 ```
 
 Direct mutation of `handle` or calls through the raw API bypass the managed
-state checks. See [LibRaw initialization](https://www.libraw.org/docs/API-C.html).
+state checks. See [LibRaw initialization](https://www.libraw.org/docs/API-C.html#init).
 """
 mutable struct LibRawProcessor
     handle::Ptr{libraw_data_t}
@@ -180,7 +180,7 @@ images and snapshots remain usable.
 
 [`open!`](@ref) already recycles before opening a new source; call this explicitly
 when releasing the current file without immediately replacing it.
-See [LibRaw recycling](https://www.libraw.org/docs/API-CXX.html).
+See [LibRaw recycling](https://www.libraw.org/docs/API-CXX.html#recycle).
 """
 function recycle!(p::LibRawProcessor)
     isopen(p) || throw(ArgumentError("LibRawProcessor is closed"))
@@ -218,7 +218,7 @@ end
 ```
 
 Wraps `libraw_open_file`/`libraw_open_buffer` from the
-[LibRaw C API](https://www.libraw.org/docs/API-C.html).
+[LibRaw C data-loading API](https://www.libraw.org/docs/API-C.html#dataload).
 """
 function open!(p::LibRawProcessor, path::AbstractString)
     occursin('\0', path) && throw(ArgumentError("path contains a NUL byte"))
@@ -294,7 +294,7 @@ geometry/calibration/CFA layout, and enter [`Unpacked`](@ref). Requires
 needed by [`sensor_image`](@ref) and [`process!`](@ref), but not by metadata or
 thumbnail inspection. [`openraw`](@ref) performs it by default.
 
-See [`LibRaw::unpack`](https://www.libraw.org/docs/API-CXX.html) and
+See [`LibRaw::unpack`](https://www.libraw.org/docs/API-CXX.html#unpack) and
 [`libraw_rawdata_t`](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_rawdata_t).
 """
 function unpack!(p::LibRawProcessor)
@@ -326,7 +326,7 @@ openraw("photo.nef") do p
 end
 ```
 
-Wraps `libraw_raw2image`; see the [LibRaw C++ workflow](https://www.libraw.org/docs/API-CXX.html).
+Wraps `libraw_raw2image`; see [`LibRaw::raw2image`](https://www.libraw.org/docs/API-CXX.html#raw2image).
 """
 function prepare_image!(p::LibRawProcessor)
     _require_unpacked(p)

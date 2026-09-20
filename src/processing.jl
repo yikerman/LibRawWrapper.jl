@@ -59,7 +59,7 @@ openraw("photo.nef") do p
 end
 ```
 
-Wraps `libraw_dcraw_process`; see [LibRaw processing](https://www.libraw.org/docs/API-CXX.html).
+Wraps `libraw_dcraw_process`; see [LibRaw processing](https://www.libraw.org/docs/API-CXX.html#dcraw_process).
 """
 function process!(p::LibRawProcessor, params::ProcessingParams; kwargs...)
     isempty(kwargs) ||
@@ -171,7 +171,7 @@ checked against the native thumbnail list. Call [`thumbnail`](@ref) to copy it,
 or [`extract_thumbnail!`](@ref) for the combined operation.
 
 Missing thumbnails throw `LibRawError` here. See
-[LibRaw thumbnail unpacking](https://www.libraw.org/docs/API-CXX.html).
+[LibRaw thumbnail unpacking](https://www.libraw.org/docs/API-CXX.html#unpack_thumb).
 """
 function unpack_thumbnail!(p::LibRawProcessor, index::Union{Nothing,Integer} = nothing)
     _require_open(p)

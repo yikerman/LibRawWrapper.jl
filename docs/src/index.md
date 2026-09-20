@@ -30,13 +30,13 @@ finalizer. See [`ProcessingParams`](@ref) for every rendering keyword and defaul
 
 | Operation | Required state | Resulting state |
 |:--|:--|:--|
-| `open!` | Any except `Closed` | `Opened` |
-| `unpack!` | `Opened` | `Unpacked` |
-| `prepare_image!` | `Unpacked`, `Working`, `Processed` | `Working` |
-| `process!` / `postprocess!` | `Unpacked`, `Working`, `Processed` | `Processed` |
-| `unpack_thumbnail!` | Any opened, usable input | Unchanged on success |
-| `recycle!` | Any except `Closed` | `Empty` |
-| `close!` / `close` | Any | `Closed` |
+| [`open!`](@ref) | Any except `Closed` | `Opened` |
+| [`unpack!`](@ref) | `Opened` | `Unpacked` |
+| [`prepare_image!`](@ref) | `Unpacked`, `Working`, `Processed` | `Working` |
+| [`process!`](@ref) / [`postprocess!`](@ref) | `Unpacked`, `Working`, `Processed` | `Processed` |
+| [`unpack_thumbnail!`](@ref) | Any opened, usable input | Unchanged on success |
+| [`recycle!`](@ref) | Any except `Closed` | `Empty` |
+| [`close!`](@ref) / [`close`](@ref Base.close(::LibRawProcessor)) | Any | `Closed` |
 
 Metadata access needs an opened input; sensor access needs unpacking; rendered
 output access needs a successful render. Fatal native errors enter `Failed`,

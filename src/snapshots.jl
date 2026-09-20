@@ -238,7 +238,7 @@ println(info.identity.model)  # safe after the native processor has closed
 ```
 
 Use individual accessors for smaller queries. The native aggregates are described
-in [LibRaw data structures](https://www.libraw.org/docs/API-datastruct-eng.html).
+in [LibRaw data structures](https://www.libraw.org/docs/API-datastruct-eng.html#datastruct).
 """
 function snapshot(p::LibRawProcessor)
     _require_open(p)
