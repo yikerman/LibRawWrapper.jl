@@ -1,5 +1,5 @@
 function _chars(x)
-    v = UInt8.(collect(x))
+    v = reinterpret(UInt8, collect(x))
     z = findfirst(iszero, v)
     String(v[1:(isnothing(z) ? length(v) : z-1)])
 end

@@ -1,6 +1,32 @@
 using Test
 using LibRawWrapper
 
+const FIXTURE = joinpath(@__DIR__, "data", "test.nef")
+
+@testset "Metadata text bytes" begin
+    chars = LibRawWrapper._chars
+    @test chars(Tuple(reinterpret(Cchar, UInt8[0xc3, 0xa9, 0]))) == "é"
+    @test chars((Cchar(0), Cchar(-1))) == ""
+    @test chars((Cchar(65), Cchar(66))) == "AB"
+    @test collect(codeunits(chars((Cchar(-1), Cchar(0))))) == UInt8[0xff]
+
+    openraw(FIXTURE; unpack = false) do p
+        # Exercise the public snapshot path with UTF-8 artist metadata.
+        GC.@preserve p begin
+            other = LibRawWrapper._fieldptr(p.handle, Val(:other))
+            artist = LibRawWrapper._fieldptr(other, Val(:artist))
+            bytes = collect(codeunits("José"))
+            value = ntuple(
+                i -> i <= length(bytes) ? reinterpret(Cchar, bytes[i]) : Cchar(0),
+                fieldcount(eltype(typeof(artist))),
+            )
+            unsafe_store!(artist, value)
+        end
+        @test image_other(p).artist == "José"
+        @test snapshot(p).other.artist == "José"
+    end
+end
+
 @testset "LibRaw C API" begin
     version_ptr = LibRawWrapper.libraw_version()
     @test version_ptr isa Ptr{Cchar}
