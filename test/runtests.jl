@@ -60,6 +60,76 @@ end
     end
 end
 
+@testset "Lifecycle recovery and owned input" begin
+    p = LibRawProcessor()
+    try
+        @test_throws ArgumentError unpack!(p)
+        @test_throws ArgumentError process!(p)
+        @test_throws ArgumentError open!(p, UInt8[])
+        mktempdir() do dir
+            @test_throws LibRawError open!(p, joinpath(dir, "missing.nef"))
+        end
+        @test_throws LibRawError open!(p, zeros(UInt8, 256))
+        bytes = read(FIXTURE)
+        open!(p, bytes)
+        fill!(bytes, 0)
+        GC.gc()
+        unpack!(p)
+        @test metadata(p).model == "D850"
+        @test_throws ArgumentError unpack!(p)
+        @test_throws ArgumentError processed_image(p)
+        sensor = sensor_image(p)
+        saved = copy(sensor.data[1:8, 1:8])
+        close!(p)
+        GC.gc()
+        @test sensor.data[1:8, 1:8] == saved
+        @test !isopen(p)
+        @test_throws ArgumentError sensor_image(p)
+        @test_throws ArgumentError open!(p, FIXTURE)
+    finally
+        close!(p)
+    end
+    open(FIXTURE) do io
+        openraw(io; unpack = false) do q
+            @test metadata(q).model == "D850"
+        end
+        @test isopen(io)
+    end
+    captured = Ref{LibRawProcessor}()
+    @test_throws ErrorException openraw(FIXTURE; unpack = false) do q
+        captured[] = q
+        error("caller failure")
+    end
+    @test !isopen(captured[])
+end
+
+@testset "CFA phase and sensor crop" begin
+    openraw(FIXTURE) do p
+        full = sensor_image(p)
+        visible = sensor_image(p; visible = true)
+        s = image_sizes(p)
+        @test visible.data == full.data[
+            (s.top_margin+1):(s.top_margin+s.height),
+            (s.left_margin+1):(s.left_margin+s.width),
+        ]
+        @test cfa_pattern(full) == UInt8[1 2; 4 3]
+        @test color_index(full, 3, 4) == 2
+        @test_throws BoundsError color_index(full, 0, 1)
+        # A nonzero crop origin checks CFA phase even though this fixture has no margins.
+        cropped = SensorImage(copy(full.data[2:5, 2:5]), full.layout, s, (2, 2))
+        @test cfa_pattern(cropped) == UInt8[3 4; 2 1]
+        @test color_indices(cropped) == UInt8[3 4 3 4; 2 1 2 1; 3 4 3 4; 2 1 2 1]
+    end
+end
+
+@testset "Invalid rendering options" begin
+    @test_throws ArgumentError ProcessingParams(output_type = Float32)
+    @test_throws ArgumentError ProcessingParams(brightness = NaN)
+    @test_throws ArgumentError ProcessingParams(gamma = (0, 1))
+    @test_throws ArgumentError CustomWB((1, 1, 1))
+    @test_throws ArgumentError CustomWB((1, 1, 1, -1))
+end
+
 @testset "LibRaw C API" begin
     version_ptr = LibRawWrapper.libraw_version()
     @test version_ptr isa Ptr{Cchar}
