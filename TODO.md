@@ -14,16 +14,15 @@ snapshots and image data.
 - CFA-aware Bayer/X-Trans access, visible crops, channel indices, and floating-
   point or multichannel sensor buffers.
 - Snapshots for core image, color, lens, shooting, thumbnail, and raw-data
-  metadata, with copied DNG color entries; maker-note dictionaries currently
-  contain vendor keys with placeholder values.
+  metadata, with owned vendor/common/lens dictionaries, DNG color and level
+  records, and retained autofocus, Nikon burst, and DNG opcode payloads.
 
 ## Remaining
 
 - Expose `libraw_open_file_ex` options and a safe `open_bayer!` convenience API.
 - Add typed accessors for remaining output controls such as FBDD noise
   reduction, maximum adjustment threshold, output TIFF mode, and crop boxes.
-- Add copied ICC, XMP, GPS, and richer vendor metadata where ownership can be
-  represented safely; retain unknown fields in dictionaries.
+- Add copied ICC, XMP, and GPS metadata.
 - Add rooted callback helpers, progress cancellation, and callback cleanup.
 - Add managed wrappers for `dcraw_ppm_tiff_writer`, `dcraw_thumb_writer`,
   `recycle_datastream`, `subtract_black`, `free_image`, and
@@ -31,10 +30,10 @@ snapshots and image data.
 
 ## Raw-only by design
 
-Callback records, custom datastream classes, internal decoder structures, and
-complete vendor maker-note layouts remain available through `LibRawRaw`. They
-should not become stable typed APIs until pointer ownership and version
-compatibility are defined.
+Callback records, custom datastream classes, and internal decoder structures
+remain available through `LibRawRaw`. Vendor metadata is exposed as owned
+dictionaries whose keys follow the pinned native version, rather than stable
+typed records.
 
 ## Alternative binding distribution
 

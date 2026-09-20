@@ -113,9 +113,34 @@ copied during unpacking. Before unpacking, `sensor_color` is `nothing`.
 Rendering can change current metadata, including dimensions. Sensor snapshots
 retain the geometry saved during unpacking.
 
-`maker_notes` currently contains vendor keys with `nothing` placeholders.
-`dng[:entries]` contains native DNG color entries. Other DNG tags and detailed
-vendor metadata require the raw API.
+`maker_notes` contains nested dictionaries for vendor records, shared metadata
+under `:common`, and detailed lens metadata under `:lens`. Keys retain LibRaw's
+field names and casing. All vendor records are included, so a key's presence
+does not mean the camera supplied a value. Native defaults and sentinels remain
+unchanged.
+
+```julia
+info = openraw("photo.nef"; unpack=false) do raw
+    snapshot(raw)
+end
+info.maker_notes[:nikon][:PictureControlName]
+info.maker_notes[:lens][:makernotes][:LensID]
+```
+
+`dng[:version]` is zero for non-DNG input. `dng[:entries]` holds the two native
+DNG color records, and `dng[:levels]` holds levels, crops, white balance,
+baseline exposure, and opcode records. Their `parsedfields` flags identify
+fields LibRaw parsed. Numeric codes are not translated into labels.
+
+Text fields become strings. Arrays become vectors, with nested vectors in
+native row order for matrices (`matrix[row][column]`). Autofocus, Nikon burst,
+and DNG opcode payloads are copied as byte vectors without decoding their
+contents. A null native pointer becomes `nothing`, even when a tag length was
+recorded. These copies survive recycling and closing the processor.
+
+Coverage follows the metadata LibRaw retains in these records, not every tag
+in the file. GPS, XMP, and ICC data still require the raw API. See
+[LibRaw's metadata structures](https://www.libraw.org/docs/API-datastruct-eng.html#libraw_data_t).
 
 ## Embedded previews and failures
 

@@ -25,6 +25,23 @@ For a smaller summary, use [`metadata`](@ref). Individual accessors such as
 [`lens_info`](@ref) and [`image_other`](@ref) copy only the corresponding group
 of fields. See [What a snapshot records](@ref) for coverage and stage differences.
 
+For Nikon Picture Control and detailed lens identification:
+
+```julia
+println(info.maker_notes[:nikon][:PictureControlName])
+println(info.maker_notes[:lens][:makernotes][:LensID])
+```
+
+Check DNG field flags before interpreting a value:
+
+```julia
+levels = info.dng[:levels]
+flag = UInt32(LibRawRaw.LIBRAW_DNGFM_BASELINEEXPOSURE)
+if info.dng[:version] != 0 && (levels[:parsedfields] & flag) != 0
+    println("Baseline exposure: ", levels[:baseline_exposure], " EV")
+end
+```
+
 ## Render with explicit settings
 
 Reuse a [`ProcessingParams`](@ref) value across files. These settings produce

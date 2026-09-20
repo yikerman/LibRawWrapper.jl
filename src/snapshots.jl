@@ -12,21 +12,67 @@ Copy a nested row-major native tuple into a Julia matrix with the same logical r
 _mat(x::NTuple{R,NTuple{C,T}}) where {R,C,T} = [x[r][c] for r = 1:R, c = 1:C]
 
 """
-Copy bounded metadata aggregates recursively, replacing pointers, oversized arrays, and deeply nested values with `nothing`.
+Copy a native metadata aggregate field by field, avoiding large ABI tuple loads.
+The caller must preserve the processor while reading. Pointer fields require an
+explicit length-aware method in `_metadata_field`.
 """
-function _dictvalue(x, depth = 0)
-    x isa Ptr && return nothing
-    x isa Union{Number,Enum,CEnum.Cenum,Symbol,AbstractString} && return x
-    depth > 2 && return nothing
-    x isa NamedTuple &&
-        return Dict{Symbol,Any}(k => _dictvalue(v, depth+1) for (k, v) in pairs(x))
-    x isa Union{Tuple,AbstractArray} &&
-        return length(x) > 256 ? nothing : [_dictvalue(v, depth+1) for v in x]
-    isstructtype(typeof(x)) || return nothing
-    Dict{Symbol,Any}(
-        n => _dictvalue(getfield(x, n), depth+1) for n in fieldnames(typeof(x))
-    )
+function _metadata_value(ptr::Ptr{T}) where {T}
+    Dict{Symbol,Any}(n => _metadata_field(ptr, Val(n)) for n in fieldnames(T))
 end
+
+"""Read a scalar metadata value without changing native codes or sentinel values."""
+_metadata_value(ptr::Ptr{T}) where {T<:Union{Number,CEnum.Cenum}} = unsafe_load(ptr)
+
+"""Reject unhandled native pointers rather than returning borrowed storage or silently dropping data."""
+_metadata_value(::Ptr{Ptr{T}}) where {T} =
+    throw(ArgumentError("metadata pointer requires an explicit copy rule"))
+
+"""
+Copy inline arrays as vectors, with nested vectors preserving native row order.
+Read elements through pointers so even large DNG arrays need no tuple materialization.
+"""
+function _metadata_value(ptr::Ptr{NTuple{N,T}}) where {N,T}
+    if T <: Union{Number,CEnum.Cenum}
+        return copy(unsafe_wrap(Vector{T}, Ptr{T}(ptr), N; own = false))
+    end
+    [_metadata_value(Ptr{T}(Ptr{UInt8}(ptr) + (i-1)*sizeof(T))) for i = 1:N]
+end
+
+"""Copy a bounded native text field, preserving bytes and stopping at the first NUL."""
+function _metadata_value(ptr::Ptr{NTuple{N,Cchar}}) where {N}
+    bytes = unsafe_wrap(Vector{UInt8}, Ptr{UInt8}(ptr), N; own = false)
+    z = findfirst(iszero, bytes)
+    String(bytes[1:(isnothing(z) ? N : z-1)])
+end
+
+"""Copy one inline metadata field using its generated ABI offset."""
+_metadata_field(ptr, field) = _metadata_value(_fieldptr(ptr, field))
+
+"""
+Copy a native binary payload using its byte length. A null pointer means no
+retained payload (`nothing`), even if LibRaw recorded a nonzero tag length.
+The caller must preserve the owner; allocation bounds come from LibRaw.
+"""
+function _metadata_bytes(ptr::Ptr, len::Integer)
+    0 <= len <= typemax(Int) || throw(ArgumentError("invalid metadata byte length"))
+    ptr == C_NULL && return nothing
+    copy(unsafe_wrap(Vector{UInt8}, Ptr{UInt8}(ptr), Int(len); own = false))
+end
+
+"""Copy a retained Nikon burst table using its native byte count."""
+_metadata_field(ptr::Ptr{libraw_nikon_makernotes_t}, ::Val{:BurstTable_0x0056}) =
+    _metadata_bytes(
+        _load(ptr, Val(:BurstTable_0x0056)),
+        _load(ptr, Val(:BurstTable_0x0056_len)),
+    )
+
+"""Copy an opaque autofocus record using its native byte count."""
+_metadata_field(ptr::Ptr{libraw_afinfo_item_t}, ::Val{:AFInfoData}) =
+    _metadata_bytes(_load(ptr, Val(:AFInfoData)), _load(ptr, Val(:AFInfoData_length)))
+
+"""Copy an opaque DNG opcode list using its native byte count."""
+_metadata_field(ptr::Ptr{libraw_dng_rawopcode_t}, ::Val{:data}) =
+    _metadata_bytes(_load(ptr, Val(:data)), _load(ptr, Val(:len)))
 
 """
 Convert native geometry fields into Julia integer dimensions without retaining native storage.
@@ -226,16 +272,29 @@ observed lifecycle stage. `color` reflects current calibration and `sensor_color
 contains the separately copied unpack-time calibration, or `nothing` before
 unpacking. Thumbnail bytes are included only after thumbnail unpacking.
 
-Arrays and dictionaries are independent, mutable copies. `maker_notes`
-currently contains vendor keys with `nothing` placeholders. Detailed vendor
-values remain available through the raw API. `dng[:entries]`
-contains copied native DNG color entries, not every DNG tag.
+Arrays and dictionaries are independent, mutable copies. Dictionary keys retain
+native field names and casing:
+
+- `maker_notes[:nikon]`, `[:canon]`, etc. copy each native vendor record.
+  `[:common]` contains shared fields, including firmware and autofocus records.
+  `[:lens]` copies the complete native lens record, including its vendor fields.
+- `dng[:version]` is the native packed DNG version (zero for non-DNG input).
+  `[:entries]` contains the two DNG color records. `[:levels]` contains DNG
+  levels, crops, white balance, exposure, and opcode records.
+
+Native structs become dictionaries, text becomes strings, and arrays become
+vectors (nested vectors for native matrices, indexed as `[row][column]`). Binary
+payloads are copied as `Vector{UInt8}`, or `nothing` when no payload is retained.
+Numeric codes, sentinels, lengths, and `parsedfields` flags remain unchanged.
+All vendor records are present, including defaults for unrelated cameras.
+These dictionaries expose metadata retained by LibRaw, not every tag in the file.
 
 ```julia
-info = openraw("photo.nef") do p
+info = openraw("photo.nef"; unpack=false) do p
     snapshot(p)
 end
 println(info.identity.model)  # safe after the native processor has closed
+println(info.maker_notes[:nikon][:PictureControlName])
 ```
 
 Use individual accessors for smaller queries. The native aggregates are described
@@ -243,11 +302,16 @@ in [LibRaw data structures](https://www.libraw.org/docs/API-datastruct-eng.html#
 """
 function snapshot(p::LibRawProcessor)
     _require_open(p)
-    # Detailed vendor fields remain raw-only; avoid traversing huge ABI tuples.
-    maker = Dict{Symbol,Any}(n => nothing for n in fieldnames(libraw_makernotes_t))
-    dng = GC.@preserve p begin
-        entries = _load(_fieldptr(p.handle, Val(:color)), Val(:dng_color))
-        Dict{Symbol,Any}(:entries => [_dictvalue(v) for v in entries])
+    maker, dng = GC.@preserve p begin
+        maker = _metadata_value(_fieldptr(p.handle, Val(:makernotes)))
+        maker[:lens] = _metadata_value(_fieldptr(p.handle, Val(:lens)))
+        color = _fieldptr(p.handle, Val(:color))
+        dng = Dict{Symbol,Any}(
+            :version => _load(_fieldptr(p.handle, Val(:idata)), Val(:dng_version)),
+            :entries => _metadata_value(_fieldptr(color, Val(:dng_color))),
+            :levels => _metadata_value(_fieldptr(color, Val(:dng_levels))),
+        )
+        maker, dng
     end
     RawSnapshot(
         p.state,

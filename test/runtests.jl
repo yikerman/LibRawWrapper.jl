@@ -3,6 +3,8 @@ using LibRawWrapper
 
 const FIXTURE = joinpath(@__DIR__, "data", "test.nef")
 
+include("metadata.jl")
+
 @testset "Metadata text bytes" begin
     chars = LibRawWrapper._chars
     @test chars(Tuple(reinterpret(Cchar, UInt8[0xc3, 0xa9, 0]))) == "é"
